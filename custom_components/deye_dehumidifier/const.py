@@ -26,6 +26,13 @@ DEHUMIDIFIER_PRODUCT_TYPES = frozenset({"dehumidifier", "除湿机", "其他"})
 
 DEVICE_LIST_UPDATE_INTERVAL = timedelta(minutes=5)
 
+# Classic/Combo queries receive replies over MQTT; Fog reads properties over HTTP.
+STATE_QUERY_TIMEOUT = 20
+STATE_QUERY_FAILURES_BEFORE_RECOVERY = 3
+STATE_RECOVERY_DELAY = 5
+STATE_RECOVERY_COOLDOWN = 600
+DATA_STATE_RECOVERY = f"{DOMAIN}_state_recovery"
+
 
 def is_dehumidifier_product_type(product_type: str) -> bool:
     """Return True if the cloud product_type is a dehumidifier we support."""

@@ -91,7 +91,7 @@ async def test_cloud_list_reconciles_missing_availability_notification(
 
     assert coordinator.data.available is online
     assert device.available is online
-    assert coordinator.device is device
+    assert coordinator.device is cast(object, device)
     assert device._on_state is state_callback
     assert device._on_availability is availability_callback
 
@@ -117,7 +117,7 @@ async def test_cloud_list_preserves_fresher_state_and_pending_command(
 
     await offline_device_entry.device_list_coordinator.async_refresh()
 
-    assert coordinator.device is device
+    assert coordinator.device is cast(object, device)
     assert device.info["device_name"] == "Updated name"
     assert coordinator.data.reported_state is state
     assert coordinator.data.reported_state.environment_humidity == 63
@@ -166,5 +166,5 @@ async def test_repeated_offline_online_cycles(
         state_callback(coordinator.data.reported_state.copy())
         assert coordinator.data.available
         assert device.available
-        assert coordinator.device is device
+        assert coordinator.device is cast(object, device)
         assert device._on_state is state_callback

@@ -4,7 +4,11 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from libdeye.cloud_api import DeyeApiResponseDeviceInfo, DeyeIotPlatform
+from libdeye.cloud_api import (
+    DeyeApiResponseDeviceInfo,
+    DeyeIotPlatform,
+    transport_for_device,
+)
 from libdeye.device_state import DeyeDeviceState
 
 from custom_components.deye_dehumidifier.const import (
@@ -59,6 +63,7 @@ class FakeDeyeDevice:
         self.device_id = info["device_id"]
         self.name = info["device_name"]
         self.available = bool(info.get("online", False))
+        self.transport = transport_for_device(info)
         payload = info.get("payload") or DEFAULT_STATE_HEX
         self.reported_state = DeyeDeviceState(
             payload if isinstance(payload, str) else DEFAULT_STATE_HEX
@@ -66,6 +71,7 @@ class FakeDeyeDevice:
         self.state = self.reported_state.copy()
         self.ensure_connected = AsyncMock(return_value=MagicMock())
         self.request_refresh = AsyncMock(return_value=None)
+        self.refresh = AsyncMock(return_value=self.reported_state.copy())
         self.apply = AsyncMock()
         self._on_state: Callable[[DeyeDeviceState], None] | None = None
         self._on_availability: Callable[[bool], None] | None = None

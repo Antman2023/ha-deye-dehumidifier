@@ -32,6 +32,7 @@ from .const import (
     CONF_AUTH_TOKEN,
     CONF_PASSWORD,
     CONF_USERNAME,
+    DATA_STATE_RECOVERY,
     DOMAIN,
     MANUFACTURER,
     is_known_dehumidifier_identifier,
@@ -237,6 +238,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> boo
         data.client.disconnect()
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> None:
+    """Forget recovery cooldowns when the account is removed permanently."""
+    if recoveries := hass.data.get(DATA_STATE_RECOVERY):
+        recoveries.pop(entry.entry_id, None)
 
 
 async def async_remove_config_entry_device(
