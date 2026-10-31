@@ -120,7 +120,8 @@ async def test_real_reply_cancels_recovery_even_when_values_are_unchanged(
         await _stall(coordinator, freezer)
         desired = coordinator.data.state
         if muted:
-            coordinator.state_update_muted = MagicMock()
+            desired.target_humidity = 45
+            coordinator.mute_state_update_for_a_while()
         mqtt = cast(MagicMock, coordinator.device._mqtt)
         handler = mqtt.subscribe_state_change.call_args.args[2]
         handler(coordinator.data.reported_state.copy())
@@ -130,7 +131,7 @@ async def test_real_reply_cancels_recovery_even_when_values_are_unchanged(
     assert not coordinator.state_updates_stalled
     assert coordinator.last_state_received is not None
     if muted:
-        assert coordinator.data.state is desired
+        assert coordinator.data.state.target_humidity == 45
     reload_entry.assert_not_called()
 
 
@@ -312,7 +313,8 @@ async def test_unload_during_request_does_not_leave_a_deadline(
         await started.wait()
         await coordinator.async_shutdown()
         finish.set()
-        await task
+        with pytest.raises(asyncio.CancelledError):
+            await task
     await _advance(hass, freezer, STATE_QUERY_TIMEOUT + 1)
     assert coordinator._state_query_unsub is None
     assert coordinator.state_query_failures == 0

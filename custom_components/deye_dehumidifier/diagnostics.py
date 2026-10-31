@@ -159,6 +159,9 @@ def _coordinator_snapshot(
             "last_state_received": None,
             "state_query_failures": None,
             "state_updates_stalled": None,
+            "state_data_stale": None,
+            "last_measurement_received": None,
+            "measurement_data_stale": None,
         }
     device_mqtt = getattr(coordinator, "device", None)
     mqtt_client = getattr(device_mqtt, "_mqtt", None)
@@ -174,6 +177,15 @@ def _coordinator_snapshot(
         ),
         "state_query_failures": coordinator.state_query_failures,
         "state_updates_stalled": coordinator.state_updates_stalled,
+        "state_data_stale": coordinator.state_data_stale,
+        "last_measurement_received": {
+            field: received.isoformat() if received is not None else None
+            for field, received in coordinator.last_measurement_received.items()
+        },
+        "measurement_data_stale": {
+            field: coordinator.measurement_is_stale(field)
+            for field in coordinator.last_measurement_received
+        },
     }
 
 
@@ -198,6 +210,9 @@ def _device_diagnostics(
         "last_state_received": coordinator_data["last_state_received"],
         "state_query_failures": coordinator_data["state_query_failures"],
         "state_updates_stalled": coordinator_data["state_updates_stalled"],
+        "state_data_stale": coordinator_data["state_data_stale"],
+        "last_measurement_received": coordinator_data["last_measurement_received"],
+        "measurement_data_stale": coordinator_data["measurement_data_stale"],
     }
 
 

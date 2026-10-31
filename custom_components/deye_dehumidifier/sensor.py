@@ -61,6 +61,14 @@ class DeyeHumiditySensor(DeyeEntity, SensorEntity):
         """Return current environment humidity."""
         return self.coordinator.data.state.environment_humidity
 
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the humidity itself is still fresh."""
+        return super().available and not self.coordinator.measurement_is_stale(
+            "environment_humidity"
+        )
+
 
 class DeyeTemperatureSensor(DeyeEntity, SensorEntity):
     """Temperature sensor entity."""
@@ -85,3 +93,11 @@ class DeyeTemperatureSensor(DeyeEntity, SensorEntity):
     def native_value(self) -> int:
         """Return current environment temperature."""
         return self.coordinator.data.state.environment_temperature
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the temperature itself is still fresh."""
+        return super().available and not self.coordinator.measurement_is_stale(
+            "environment_temperature"
+        )

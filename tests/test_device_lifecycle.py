@@ -126,6 +126,7 @@ def _make_list_coordinator(*configured_ids: str) -> DeyeDeviceListCoordinator:
     coordinator.hass = hass
     coordinator.config_entry = entry
     coordinator._initial_sync = False
+    coordinator._shutdown_requested = False
     return coordinator
 
 

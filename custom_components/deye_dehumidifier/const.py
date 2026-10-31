@@ -25,6 +25,7 @@ MQTT_DISCONNECT_CHECK_INTERVAL = timedelta(minutes=1)
 DEHUMIDIFIER_PRODUCT_TYPES = frozenset({"dehumidifier", "除湿机", "其他"})
 
 DEVICE_LIST_UPDATE_INTERVAL = timedelta(minutes=5)
+DEVICE_LIST_QUERY_TIMEOUT = 30
 
 # Classic/Combo queries receive replies over MQTT; Fog reads properties over HTTP.
 STATE_QUERY_TIMEOUT = 20
@@ -32,6 +33,26 @@ STATE_QUERY_FAILURES_BEFORE_RECOVERY = 3
 STATE_RECOVERY_DELAY = 5
 STATE_RECOVERY_COOLDOWN = 600
 DATA_STATE_RECOVERY = f"{DOMAIN}_state_recovery"
+DATA_HTTP_COOLDOWNS = f"{DOMAIN}_http_cooldowns"
+STATE_DATA_MAX_AGE = 180
+COMMAND_STATE_MUTE_SECONDS = 10
+COMMAND_TIMEOUT = 20
+MQTT_DISCONNECT_TIMEOUT = 10
+
+CONTROL_STATE_FIELDS = (
+    "anion_switch",
+    "water_pump_switch",
+    "power_switch",
+    "oscillating_switch",
+    "child_lock_switch",
+    "fan_speed",
+    "mode",
+    "target_humidity",
+    "uv_switch",
+    "prompt_sound",
+    "screen_display",
+    "timed_off_hour",
+)
 
 
 def is_dehumidifier_product_type(product_type: str) -> bool:

@@ -81,8 +81,10 @@ class DeyeDehumidifier(DeyeEntity, HumidifierEntity):
 
     @property
     @override
-    def current_humidity(self) -> int:
+    def current_humidity(self) -> int | None:
         """Return the current humidity."""
+        if self.coordinator.measurement_is_stale("environment_humidity"):
+            return None
         return self.coordinator.data.state.environment_humidity
 
     @property

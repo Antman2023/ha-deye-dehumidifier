@@ -101,5 +101,7 @@ def make_coordinator(
     coordinator.device = FakeDeyeDevice(MOCK_DEVICE_INFO)
     coordinator.mute_state_update_for_a_while = MagicMock()
     coordinator.async_update_listeners = MagicMock()
-    coordinator.sync_reported_state_after_publish = MagicMock()
+    coordinator.async_publish_command = AsyncMock()
+    coordinator.has_pending_commands = False
+    coordinator.measurement_is_stale = MagicMock(return_value=False)
     return coordinator

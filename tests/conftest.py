@@ -1,14 +1,53 @@
 """Pytest fixtures for the Deye Dehumidifier integration."""
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from freezegun.api import FrozenDateTimeFactory
+from libdeye.client import DeyeClient, DeyeDevice
+from libdeye.cloud_api import DeyeCloudApi, DeyeIotPlatform
 from libdeye.device_state import DeyeDeviceState
+from libdeye.mqtt_client import DeyeFogMqttClient
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from tests.helpers import DEFAULT_STATE_HEX, MOCK_DEVICE_INFO, FakeDeyeDevice
+from custom_components.deye_dehumidifier.const import DOMAIN
+from custom_components.deye_dehumidifier.data_coordinator import (
+    DeyeDataUpdateCoordinator,
+)
+from homeassistant.core import HomeAssistant
+from tests.helpers import (
+    DEFAULT_STATE_HEX,
+    MOCK_CONFIG,
+    MOCK_DEVICE_INFO,
+    FakeDeyeDevice,
+)
 
 pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+@pytest.fixture(params=[DeyeIotPlatform.Fog, DeyeIotPlatform.FogCombo])
+async def fog_coordinator(
+    hass: HomeAssistant,
+    request: pytest.FixtureRequest,
+    freezer: FrozenDateTimeFactory,
+) -> AsyncGenerator[tuple[DeyeDataUpdateCoordinator, MagicMock]]:
+    """Exercise libdeye's real HTTP properties path without network access."""
+    api = MagicMock(spec=DeyeCloudApi)
+    api.get_fog_platform_device_properties.return_value = {
+        "CurrentEnvironmentalHumidity": 47,
+        "CurrentAmbientTemperature": 27,
+    }
+    client = DeyeClient(api)
+    client._mqtt_by_type[DeyeFogMqttClient] = DeyeFogMqttClient(api)
+    device = DeyeDevice(client, MOCK_DEVICE_INFO | {"platform": request.param})
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, version=2)
+    entry.add_to_hass(hass)
+    coordinator = DeyeDataUpdateCoordinator(hass, entry, device)
+    await coordinator._async_setup()
+    await coordinator.async_refresh()
+    yield coordinator, api
+    await coordinator.async_shutdown()
 
 
 @pytest.fixture(autouse=True)

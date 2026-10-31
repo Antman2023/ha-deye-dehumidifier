@@ -1,5 +1,6 @@
 """The Deye Dehumidifier integration."""
 
+import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 import logging
@@ -8,7 +9,6 @@ from typing import Any, TypeVar, override
 from libdeye.client import DeyeClient
 from libdeye.cloud_api import (
     DeyeApiResponseDeviceInfo,
-    DeyeCloudApi,
     DeyeCloudApiCannotConnectError,
     DeyeCloudApiInvalidAuthError,
 )
@@ -22,22 +22,25 @@ from homeassistant.exceptions import (
     HomeAssistantError,
 )
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import ssl
 
+from .cloud_api import DeyeCloudApi
 from .const import (
     CONF_AUTH_TOKEN,
     CONF_PASSWORD,
     CONF_USERNAME,
+    DATA_HTTP_COOLDOWNS,
     DATA_STATE_RECOVERY,
     DOMAIN,
     MANUFACTURER,
+    MQTT_DISCONNECT_TIMEOUT,
     is_known_dehumidifier_identifier,
 )
 from .data_coordinator import DeyeDataUpdateCoordinator, DeyeDeviceListCoordinator
+from .http import async_create_deye_session
 from .issues import (
     MqttDisconnectMonitor,
     async_delete_entry_issues,
@@ -98,6 +101,31 @@ class ConfigEntryData:
 type DeyeConfigEntry = ConfigEntry[ConfigEntryData]
 
 
+@callback
+def _log_late_disconnect_result(job: asyncio.Future[None]) -> None:
+    """Retrieve failures from cleanup that outlived its unload deadline."""
+    if not job.cancelled() and (error := job.exception()) is not None:
+        _LOGGER.error("Deye MQTT background cleanup failed: %s", error)
+
+
+async def _async_disconnect_client(hass: HomeAssistant, client: DeyeClient) -> None:
+    """Join MQTT threads off the event loop and bound the unload wait."""
+    job = hass.async_add_executor_job(client.disconnect)
+    try:
+        done, _ = await asyncio.wait((job,), timeout=MQTT_DISCONNECT_TIMEOUT)
+    except asyncio.CancelledError:
+        job.add_done_callback(_log_late_disconnect_result)
+        raise
+    if job in done:
+        job.result()
+        return
+    job.add_done_callback(_log_late_disconnect_result)
+    _LOGGER.warning(
+        "Deye MQTT cleanup exceeded %s seconds; cleanup continues in a worker",
+        MQTT_DISCONNECT_TIMEOUT,
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> bool:
     """Set up Deye Dehumidifier from a config entry.
 
@@ -112,7 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> bool
         )
 
     cloud_api = DeyeCloudApi(
-        async_get_clientsession(hass),
+        async_create_deye_session(hass, entry.data[CONF_USERNAME]),
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
         entry.data[CONF_AUTH_TOKEN],
@@ -127,11 +155,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> bool
 
     try:
         await device_list_coordinator.async_config_entry_first_refresh()
-    except ConfigEntryAuthFailed, ConfigEntryNotReady:
+    except ConfigEntryAuthFailed, ConfigEntryNotReady, asyncio.CancelledError:
         await device_list_coordinator.async_shutdown()
         for coordinator in list(coordinator_map.values()):
             await coordinator.async_shutdown()
-        client.disconnect()
+        await _async_disconnect_client(hass, client)
         raise
 
     if iter_device_subentries(entry):
@@ -146,11 +174,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> bool
             )
             try:
                 await device_list_coordinator.async_sync_configured_devices()
-            except ConfigEntryAuthFailed, ConfigEntryNotReady:
+            except ConfigEntryAuthFailed, ConfigEntryNotReady, asyncio.CancelledError:
                 await device_list_coordinator.async_shutdown()
                 for coordinator in list(coordinator_map.values()):
                     await coordinator.async_shutdown()
-                client.disconnect()
+                await _async_disconnect_client(hass, client)
                 raise
 
     mqtt_monitor = MqttDisconnectMonitor(hass, entry.entry_id, client)
@@ -235,7 +263,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> boo
         await data.device_list_coordinator.async_shutdown()
         for coordinator in data.coordinator_map.values():
             await coordinator.async_shutdown()
-        data.client.disconnect()
+        await _async_disconnect_client(hass, data.client)
 
     return unload_ok
 
@@ -244,6 +272,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: DeyeConfigEntry) -> Non
     """Forget recovery cooldowns when the account is removed permanently."""
     if recoveries := hass.data.get(DATA_STATE_RECOVERY):
         recoveries.pop(entry.entry_id, None)
+    if cooldowns := hass.data.get(DATA_HTTP_COOLDOWNS):
+        cooldowns.pop(entry.data[CONF_USERNAME], None)
 
 
 async def async_remove_config_entry_device(
@@ -351,16 +381,17 @@ class DeyeEntity(CoordinatorEntity[DeyeDataUpdateCoordinator]):
 
     async def _publish_command(self) -> None:
         """Publish commands to the device."""
-        command = self.coordinator.data.state.to_command()
         try:
-            await self.coordinator.device.apply(
-                command, baseline=self.coordinator.data.reported_state
-            )
+            await self.coordinator.async_publish_command()
         except HomeAssistantError:
             raise
         except Exception as err:
             raise _wrap_command_exception(err) from err
-        self.coordinator.sync_reported_state_after_publish()
+        finally:
+            # A debounce timer may have fired while the previous send was
+            # blocked. Requeue newer requests after failure or cancellation.
+            if self.coordinator.has_pending_commands:
+                self._debounced_publish_command.async_schedule_call()
 
     async def publish_command_from_current_state(self) -> None:
         """Publish a command generated from the current desired state.

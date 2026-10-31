@@ -52,7 +52,8 @@ async def test_state_message_recovers_missing_online_notification(
     reported = coordinator.data.reported_state
     desired = coordinator.data.state
     if muted:
-        coordinator.state_update_muted = MagicMock()
+        desired.target_humidity = 45
+        coordinator.mute_state_update_for_a_while()
     state = reported.copy()
     state.environment_humidity = 63
 
@@ -63,8 +64,9 @@ async def test_state_message_recovers_missing_online_notification(
     assert sensor.available
     assert device.available
     if muted:
-        assert coordinator.data.reported_state is reported
-        assert coordinator.data.state is desired
+        assert coordinator.data.reported_state is state
+        assert coordinator.data.state.target_humidity == 45
+        assert sensor.native_value == 63
     else:
         assert coordinator.data.reported_state is state
         assert sensor.native_value == 63

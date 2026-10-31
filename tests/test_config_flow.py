@@ -6,6 +6,7 @@ from libdeye.cloud_api import (
     DeyeCloudApiCannotConnectError,
     DeyeCloudApiInvalidAuthError,
 )
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.deye_dehumidifier.const import (
@@ -76,13 +77,14 @@ async def test_user_invalid_auth(
     assert result["errors"] == {"base": "invalid_auth"}
 
 
+@pytest.mark.parametrize(
+    "error", [DeyeCloudApiCannotConnectError, TimeoutError, OSError]
+)
 async def test_user_cannot_connect(
-    hass: HomeAssistant, mock_deye_cloud_api: MagicMock
+    hass: HomeAssistant, mock_deye_cloud_api: MagicMock, error: type[Exception]
 ) -> None:
     """A network failure re-shows the form with cannot_connect."""
-    mock_deye_cloud_api.authenticate = AsyncMock(
-        side_effect=DeyeCloudApiCannotConnectError
-    )
+    mock_deye_cloud_api.authenticate = AsyncMock(side_effect=error)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}

@@ -4,7 +4,6 @@ from types import MappingProxyType
 
 from libdeye.cloud_api import (
     DeyeApiResponseDeviceInfo,
-    DeyeCloudApi,
     DeyeCloudApiCannotConnectError,
     DeyeCloudApiInvalidAuthError,
 )
@@ -12,8 +11,8 @@ from libdeye.cloud_api import (
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .cloud_api import DeyeCloudApi
 from .const import (
     CONF_AUTH_TOKEN,
     CONF_DEVICE_ID,
@@ -25,6 +24,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
     is_dehumidifier_product_type,
 )
+from .http import async_create_deye_session
 
 
 def is_supported_dehumidifier(info: DeyeApiResponseDeviceInfo) -> bool:
@@ -73,7 +73,7 @@ async def async_list_dehumidifier_infos(
 ) -> list[DeyeApiResponseDeviceInfo]:
     """Fetch dehumidifier device-list rows for a config entry's account."""
     cloud_api = DeyeCloudApi(
-        async_get_clientsession(hass),
+        async_create_deye_session(hass, entry.data[CONF_USERNAME]),
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
         entry.data.get(CONF_AUTH_TOKEN),
@@ -175,6 +175,6 @@ async def async_migrate_v1_device_subentries(
     """
     try:
         devices = await async_list_dehumidifier_infos(hass, entry)
-    except DeyeCloudApiCannotConnectError, DeyeCloudApiInvalidAuthError:
+    except DeyeCloudApiCannotConnectError, DeyeCloudApiInvalidAuthError, OSError:
         return []
     return async_ensure_device_subentries(hass, entry, devices)

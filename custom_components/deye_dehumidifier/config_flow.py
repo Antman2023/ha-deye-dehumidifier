@@ -6,7 +6,6 @@ from typing import Any, override
 
 from libdeye.cloud_api import (
     DeyeApiResponseDeviceInfo,
-    DeyeCloudApi,
     DeyeCloudApiCannotConnectError,
     DeyeCloudApiInvalidAuthError,
 )
@@ -20,13 +19,13 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
 )
 
+from .cloud_api import DeyeCloudApi
 from .const import (
     CONF_AUTH_TOKEN,
     CONF_DEVICE_ID,
@@ -35,6 +34,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
+from .http import async_create_deye_session
 from .subentries import (
     async_list_dehumidifier_infos,
     configured_device_ids,
@@ -61,7 +61,7 @@ async def validate_input(
 
     try:
         cloud_api = DeyeCloudApi(
-            async_get_clientsession(hass),
+            async_create_deye_session(hass, user_input[CONF_USERNAME]),
             user_input[CONF_USERNAME],
             user_input[CONF_PASSWORD],
         )
@@ -72,7 +72,7 @@ async def validate_input(
             "unique_id": cloud_api.user_id,
             "data": user_input | {CONF_AUTH_TOKEN: cloud_api.auth_token},
         }
-    except DeyeCloudApiCannotConnectError:
+    except DeyeCloudApiCannotConnectError, OSError:
         errors["base"] = "cannot_connect"
     except DeyeCloudApiInvalidAuthError:
         errors["base"] = "invalid_auth"
@@ -296,7 +296,7 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
         """Fetch dehumidifier rows for the parent account."""
         try:
             return {}, await async_list_dehumidifier_infos(self.hass, entry)
-        except DeyeCloudApiCannotConnectError:
+        except DeyeCloudApiCannotConnectError, OSError:
             return {"base": "cannot_connect"}, []
         except DeyeCloudApiInvalidAuthError:
             return {"base": "invalid_auth"}, []
